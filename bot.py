@@ -3,11 +3,28 @@ import os
 import gc
 import discord
 from discord.ext import commands
+from aiohttp import web
 
-# 1. Reducir intents al mínimo estricto para ahorrar ~20-30 MB de RAM
+# Intents mínimos para ahorrar memoria
 intents = discord.Intents.none()
 intents.guilds = True
 intents.voice_states = True
+
+# Servidor web en segundo plano para el health check de Render
+async def handle_health_check(request):
+    return web.Response(text="Doom Slayer is online!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle_health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Render asigna automáticamente el puerto en la variable PORT
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f" LOG LOCAL: Servidor Web activo en el puerto {port}", flush=True)
 
 class DoomBot(commands.Bot):
     def __init__(self):
@@ -15,6 +32,7 @@ class DoomBot(commands.Bot):
 
     async def setup_hook(self):
         await self.tree.sync()
+        await start_web_server()
 
 bot = DoomBot()
 
@@ -49,10 +67,9 @@ async def doom(interaction: discord.Interaction):
             print(f"❌ Error durante la reproducción de FFmpeg: {error}", flush=True)
         else:
             print(" LOG LOCAL: FFmpeg terminó de reproducir normalmente.", flush=True)
-        # Forzar liberación de memoria tras terminar
         gc.collect()
 
-    # 2. Opciones de bajo consumo de memoria para FFmpeg
+    # Opciones de bajo consumo de RAM para FFmpeg
     ffmpeg_options = {
         'before_options': '-re',
         'options': '-vn -sn -dn -bufsize 64k'
